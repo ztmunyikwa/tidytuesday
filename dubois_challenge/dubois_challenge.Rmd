@@ -1,0 +1,78 @@
+---
+title: "tidy tuesday; Dubois challenge"
+author: "Zanele Munyikwa"
+date: "`r Sys.Date()`"
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+---
+
+```{r load libraries}
+library(tidyverse)
+library(ggthemes)
+library(ggforce)
+library(sysfonts)
+font_add_google("Bai Jamjuree")
+```
+
+```{r}
+data.df <- read.csv('/Users/Zanele/Dropbox (MIT)/tidytuesday/dubois_challenge/data.csv')
+```
+
+```{r}
+#order our occupations so we have the same ordering in our pie chart
+data.df <- data.df %>% mutate(Occupation = factor(Occupation, levels = c("Agriculture, Fisheries and Mining", "Domestic and Personal Service", "Manufacturing and Mechanical Industries","Trade and Transportation", "Professions"))) %>%arrange(Group, Occupation) %>% mutate(Occupation=str_to_upper(Occupation), Group=str_to_upper(Group))
+data.df
+```
+
+
+I used an [online protractor](https://www.ginifab.com/feeds/angle_measurement/)to measure the angles. The top and bottom plots are 112 degrees each. then the spaces are each 68 degrees (this totals 360 degrees, makes sense :))
+
+Calculate radians size based on each wedge chart mapping 100% to 112 degrees. Then multiply degrees by pi/180. tbt to high school trigonometry. 
+```{r}
+data.df <-data.df %>% mutate(radians_size=(Percentage/100)*112 * pi/180)
+```
+
+Initially createe start and end 'coordinates' for each segment, assuming we start at zero.
+```{r}
+data.df <-data.df %>% mutate(end=cumsum(radians_size))
+data.df <- data.df %>% mutate(start = lag(end, default=0))
+```
+
+Then create offset variable for each group. first offset for the group for Black workers is needed so that we can have the plot start at -56 degrees instead of zero. then we need the wedge plot for White workers to start after a big gap.
+```{r}
+data.df <- data.df %>% mutate(offset = ifelse(Group=='NEGROES', -56*pi/180, -56*pi/180+68*pi/180))
+```
+
+Create new start and endpoints, incorporating these offsets. Also create a midpoint variable to use for our labels. 
+```{r}
+data.df <- data.df %>% mutate(start_w_offset = start+offset, end_w_offset=end+offset) %>% mutate(mid_w_offset = (start_w_offset + end_w_offset)/2)
+```
+
+```{r}
+#let's preview our data now
+data.df 
+```
+
+```{r}
+#great, finally, we need to build the labels for our plot
+#this link was handy for this: https://wilkelab.org/practicalgg/articles/bundestag_pie.html
+#radius for labels estimated based on the plot radius (0.92, see below)
+rlabel_out <- 1.05 * 0.91
+rlabel_in <- 0.9 * 0.92
+```
+
+Now we have all the variables we need, let's put everything together. 
+```{r, fig.width=22,fig.height=28}
+data.df  %>%
+  ggplot() +
+  geom_arc_bar(aes(x0 = 0, y0 = 0, r0 = 0, r = 0.92, start=start_w_offset, end= end_w_offset, fill = Occupation))  + scale_fill_manual(values =c( "#dc143c", "#ffd700", "#0000ff", '#d2b48c', 'light grey')) + ggtitle('OCCUPATIONS OF NEGROES AND WHITES IN GEORGIA .') +theme_void() + theme(text= element_text(family="Bai Jamjuree"), plot.title = element_text(size=50, hjust = 0.5, vjust =-6.2, face='bold', margin=margin(0,0,45,0)), legend.position=c(0.81, 0.5),legend.text=element_text(size=30), legend.title = element_blank(), plot.background = element_rect(fill = "#faf0e6"), legend.background = element_rect(fill = "#faf0e6", color="#faf0e6"), legend.key.size = unit(1.1, 'cm')) +
+  geom_text( aes( x = rlabel_in * sin(mid_w_offset),  y = rlabel_in * cos(mid_w_offset), label = paste(Percentage, '%', sep='')), size = 12 ) +geom_text(
+    aes(
+      x = rlabel_out * sin(mid_w_offset+0.3),
+      y = rlabel_out * cos(mid_w_offset+0.3),
+      label = ifelse(Occupation=="AGRICULTURE, FISHERIES AND MINING", paste(Group, '.', sep=''), '')
+    ), size = 12)
+```
+
